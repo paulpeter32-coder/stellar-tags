@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700&display=swap');
+
 :root {
   --ink: #0f172a;
   --slate: #334155;
@@ -18,7 +20,8 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  font-family: "Bricolage Grotesque", "Bricolage Grotesque Fallback", ui-sans-serif, system-ui,
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   color: var(--ink);
   background: radial-gradient(1200px 600px at 90% -10%, rgba(48, 213, 200, 0.25), transparent 60%),
     radial-gradient(900px 600px at -10% 20%, rgba(31, 124, 255, 0.18), transparent 55%),
@@ -775,23 +778,6 @@ button.disconnect-button:hover:not(:disabled) {
 
 .details-link:hover {
   text-decoration: underline;
-}
-
-.spark {
-  height: 56px;
-  border-radius: 12px;
-  background: linear-gradient(120deg, rgba(31, 124, 255, 0.15), rgba(48, 213, 200, 0.2));
-  position: relative;
-  overflow: hidden;
-}
-
-.spark::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
-  transform: translateX(-100%);
-  animation: shimmer 4s infinite;
 }
 
 .help-panel {
