@@ -1262,8 +1262,8 @@ function AnalyticsPage({
             <span />
           </button>
           <div>
-            <h2 className="headline">Analytics</h2>
-            <p className="subtle">Monitor corridors, spikes, and routing health.</p>
+            <h2 className="headline">Insights & Integrity</h2>
+            <p className="subtle">Verified proof of every route, settlement speed, and platform success.</p>
           </div>
           <div className="topbar-actions">
             <span className="chip">Testnet</span>
@@ -1301,7 +1301,7 @@ function AnalyticsPage({
         <section className="grid columns-3">
           <div className="card reveal">
             <div className="card-header">
-              <h2>Routing volume</h2>
+              <h2>Flow volume</h2>
               <span className="badge">Last 1h</span>
             </div>
             <div className="metric">{routingVolumeValue} <span>XLM</span></div>
@@ -1315,7 +1315,7 @@ function AnalyticsPage({
           </div>
           <div className="card reveal">
             <div className="card-header">
-              <h2>Success rate</h2>
+              <h2>Routing reliability</h2>
               <span className="badge">Last 1h</span>
             </div>
             <div className="metric">{successRateValue} <span>percent</span></div>
