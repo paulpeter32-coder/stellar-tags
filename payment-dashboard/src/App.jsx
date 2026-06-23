@@ -148,7 +148,7 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [balanceError, setBalanceError] = useState('')
 
-  const loadBalance = async () => {
+  const loadBalance = useCallback(async () => {
     setIsRefreshing(true)
     setBalanceError('')
     try {
@@ -167,7 +167,7 @@ function App() {
     } finally {
       setIsRefreshing(false)
     }
-  }
+  }, [userPublicKey])
 
   useEffect(() => {
     if (!userPublicKey) {
@@ -175,7 +175,7 @@ function App() {
     }
     const run = async () => { await loadBalance() }
     run()
-  }, [userPublicKey])
+  }, [userPublicKey, loadBalance])
 
   useEffect(() => {
     const syncView = () => {
@@ -208,7 +208,7 @@ function App() {
     return () => window.removeEventListener('hashchange', syncView)
   }, [])
 
-  const handleNavigate = (view) => {
+  const handleNavigate = useCallback((view) => {
     setActiveView(view)
     if (view === 'register') {
       window.location.hash = 'register'
@@ -231,9 +231,9 @@ function App() {
     }
 
     window.location.hash = ''
-  }
+  }, [])
 
-  const handleRegistrationStateChange = (nextState) => {
+  const handleRegistrationStateChange = useCallback((nextState) => {
     setRegistrationState(nextState)
 
     if (nextState === 'new') {
@@ -243,7 +243,7 @@ function App() {
     if (nextState === 'existing' && activeView === 'register') {
       handleNavigate('dashboard')
     }
-  }
+  }, [activeView, handleNavigate])
 
   if (activeView === 'register' && registrationState === 'new') {
     return (
@@ -306,7 +306,6 @@ function App() {
   return (
     <Dashboard
       userPublicKey={userPublicKey}
-      setUserPublicKey={setUserPublicKey}
       onConnectWallet={handleConnectWallet}
       onDisconnectWallet={handleDisconnectWallet}
       balance={balance}
@@ -325,7 +324,6 @@ function App() {
 
 function Dashboard({
   userPublicKey,
-  setUserPublicKey,
   onConnectWallet,
   onDisconnectWallet,
   balance,
@@ -357,7 +355,7 @@ function Dashboard({
   const [activeBalancePanel, setActiveBalancePanel] = useState('')
   const [receiveAddress, setReceiveAddress] = useState('')
   const [receiveTag, setReceiveTag] = useState('')
-  const [receiveStatus, setReceiveStatus] = useState({
+  const [, setReceiveStatus] = useState({
     text: '',
     color: '#1F2937',
     bgColor: '#F3F4F6',
@@ -423,7 +421,7 @@ function Dashboard({
     }
 
     loadReceiveDetails()
-  }, [userPublicKey])
+  }, [userPublicKey, onRegistrationStateChange])
 
   const handleConnect = async () => {
     const result = await onConnectWallet()
@@ -493,7 +491,7 @@ function Dashboard({
            throw new Error(preparedTransaction.error.message || 'Simulation rejected by network.')
          }
       } catch (err) {
-         throw new Error(`Simulation failed: ${err.message}`)
+         throw new Error(`Simulation failed: ${err.message}`, { cause: err })
       }
 
       // --- PHASE 4: WALLET SIGNATURE ---
@@ -506,7 +504,7 @@ function Dashboard({
         })
         if (signedXdrResponse.error) throw new Error(signedXdrResponse.error)
       } catch (err) {
-        throw new Error(`Wallet signature failed: ${err.message}`)
+        throw new Error(`Wallet signature failed: ${err.message}`, { cause: err })
       }
 
       // --- PHASE 5: BLOCKCHAIN SUBMISSION ---
@@ -540,7 +538,7 @@ function Dashboard({
           throw new Error(`Blockchain rejected transaction: ${status || 'Unknown'}`)
         }
       } catch (err) {
-        throw new Error(`Submission failed: ${err.message}`)
+        throw new Error(`Submission failed: ${err.message}`, { cause: err })
       }
 
     } catch (error) {
@@ -559,7 +557,7 @@ function Dashboard({
     try {
       await navigator.clipboard.writeText(value)
       displayReceiveMessage(`${label} copied to clipboard.`, '#059669', '#D1FAE5')
-    } catch (error) {
+    } catch {
       displayReceiveMessage('Copy failed. Please copy manually.', '#DC2626', '#FEE2E2')
     }
   }
@@ -1817,7 +1815,7 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
         if (response.ok && data?.username) {
           onRegistered()
         }
-      } catch (error) {
+      } catch {
         // Ignore lookup errors in registration view.
       }
     }
@@ -1847,7 +1845,7 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
 
       setUserPublicKey(response.address)
       setStatusMessage('Wallet connected. Pick your username.', 'success')
-    } catch (error) {
+    } catch {
       setStatusMessage('Unable to connect to Freighter.', 'error')
     } finally {
       setIsConnecting(false)
