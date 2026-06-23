@@ -1854,7 +1854,7 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
     }
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const cleaned = username.trim()
     const normalizedUsername = normalizeNameTag(cleaned)
@@ -1870,6 +1870,20 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
     }
 
     setIsSubmitting(true)
+    setStatusMessage('Approve the signature request in Freighter...', 'neutral')
+
+    let signature
+    try {
+      const message = `register:${normalizedUsername}:${userPublicKey}`
+      const result = await freighterApi.signMessage(message, { address: userPublicKey })
+      if (result.error) throw new Error(result.error)
+      signature = result.signedMessage
+    } catch (err) {
+      setStatusMessage(err.message || 'Signature request cancelled.', 'error')
+      setIsSubmitting(false)
+      return
+    }
+
     setStatusMessage('Submitting your registration...', 'neutral')
 
     fetch(`${API_BASE}/register`, {
@@ -1880,6 +1894,7 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
       body: JSON.stringify({
         username: normalizedUsername,
         address: userPublicKey,
+        signature,
       }),
     })
       .then(async (response) => {

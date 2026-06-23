@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const { Keypair } = require('@stellar/stellar-sdk');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -74,9 +75,25 @@ app.get('/federation', (req, res) => {
 app.post('/register', (req, res) => {
   const username = normalizeNameTag(req.body.username);
   const address = typeof req.body.address === 'string' ? req.body.address.trim() : '';
+  const signature = typeof req.body.signature === 'string' ? req.body.signature.trim() : '';
 
   if (!username || !address) {
     return res.status(400).json({ detail: 'username and address are required' });
+  }
+
+  if (!signature) {
+    return res.status(400).json({ detail: 'signature is required' });
+  }
+
+  try {
+    const keypair = Keypair.fromPublicKey(address);
+    const message = `register:${username}:${address}`;
+    const valid = keypair.verify(Buffer.from(message), Buffer.from(signature, 'base64'));
+    if (!valid) {
+      return res.status(401).json({ detail: 'Invalid signature' });
+    }
+  } catch {
+    return res.status(400).json({ detail: 'Signature verification failed' });
   }
 
   db.get(
