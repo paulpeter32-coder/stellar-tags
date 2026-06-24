@@ -250,12 +250,20 @@ app.get('/federation', etagCache, async (req, res, next) => {
   }
 });
 
+const { StrKey } = require('@stellar/stellar-sdk');
+
 app.post('/register', async (req, res, next) => {
   const username = normalizeNameTag(req.body.username);
   const address = typeof req.body.address === 'string' ? req.body.address.trim() : '';
 
   if (!username || !address) {
     const error = new Error('username and address are required');
+    error.statusCode = 400;
+    return next(error);
+  }
+
+  if (!StrKey.isValidEd25519PublicKey(address)) {
+    const error = new Error('Invalid Stellar Public Key format.');
     error.statusCode = 400;
     return next(error);
   }
