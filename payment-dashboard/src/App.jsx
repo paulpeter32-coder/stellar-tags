@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import freighterApi from '@stellar/freighter-api'
+import { useDebounce } from './useDebounce'
 
 const CONTRACT_ID = 'CDNQ7OMHIFOLZHOKWQLOGDW7CF3DRMKXJC6OULNGNBWF4O4NO2NEIGER'
 const TREASURY_ADDRESS = 'GAAFWEZKDYPXLTQGKQ3F23TXWYQUDAYTDW7P7VUQSVJFW2GWC4Y6LWST'
@@ -148,7 +149,7 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [balanceError, setBalanceError] = useState('')
 
-  const loadBalance = async () => {
+  const loadBalance = useCallback(async () => {
     setIsRefreshing(true)
     setBalanceError('')
     try {
@@ -175,7 +176,7 @@ function App() {
     }
     const run = async () => { await loadBalance() }
     run()
-  }, [userPublicKey])
+  }, [userPublicKey, loadBalance])
 
   useEffect(() => {
     const syncView = () => {
@@ -208,7 +209,7 @@ function App() {
     return () => window.removeEventListener('hashchange', syncView)
   }, [])
 
-  const handleNavigate = (view) => {
+  const handleNavigate = useCallback((view) => {
     setActiveView(view)
     if (view === 'register') {
       window.location.hash = 'register'
@@ -231,9 +232,9 @@ function App() {
     }
 
     window.location.hash = ''
-  }
+  }, [])
 
-  const handleRegistrationStateChange = (nextState) => {
+  const handleRegistrationStateChange = useCallback((nextState) => {
     setRegistrationState(nextState)
 
     if (nextState === 'new') {
@@ -243,7 +244,7 @@ function App() {
     if (nextState === 'existing' && activeView === 'register') {
       handleNavigate('dashboard')
     }
-  }
+  }, [activeView, handleNavigate])
 
   if (activeView === 'register' && registrationState === 'new') {
     return (
@@ -306,7 +307,6 @@ function App() {
   return (
     <Dashboard
       userPublicKey={userPublicKey}
-      setUserPublicKey={setUserPublicKey}
       onConnectWallet={handleConnectWallet}
       onDisconnectWallet={handleDisconnectWallet}
       balance={balance}
@@ -350,13 +350,14 @@ function Dashboard({
     action()
   }
   const [nameTag, setNameTag] = useState('')
+  const debouncedNameTag = useDebounce(nameTag, 300)
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isReceiving, setIsReceiving] = useState(false)
   const [activeBalancePanel, setActiveBalancePanel] = useState('')
   const [receiveAddress, setReceiveAddress] = useState('')
   const [receiveTag, setReceiveTag] = useState('')
-  const [receiveStatus, setReceiveStatus] = useState({
+  const [, setReceiveStatus] = useState({
     text: '',
     color: '#1F2937',
     bgColor: '#F3F4F6',
@@ -422,7 +423,38 @@ function Dashboard({
     }
 
     loadReceiveDetails()
-  }, [userPublicKey])
+  }, [userPublicKey, onRegistrationStateChange])
+
+  useEffect(() => {
+    if (!debouncedNameTag || !userPublicKey) {
+      return
+    }
+
+    const searchRecipient = async () => {
+      try {
+        const resolved = await resolveRecipient(debouncedNameTag)
+        if (resolved.error) {
+          return
+        }
+
+        if (resolved.address) {
+          return
+        }
+
+        if (resolved.tag) {
+          const response = await fetch(`${API_BASE}/federation?q=${encodeURIComponent(resolved.tag)}&type=name`)
+          const data = response.ok ? await response.json() : null
+          if (!data?.account_id) {
+            return
+          }
+        }
+      } catch (error) {
+        // Silently fail on search errors during typing
+      }
+    }
+
+    searchRecipient()
+  }, [debouncedNameTag, userPublicKey])
 
   const handleConnect = async () => {
     const result = await onConnectWallet()
@@ -714,12 +746,16 @@ function Dashboard({
 
                 <label>Amount (XLM)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
+                  onChange={(event) => {
+                    const raw = event.target.value.replace(/[^0-9.]/g, '')
+                    const parts = raw.split('.')
+                    const cleaned = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : raw
+                    setAmount(cleaned)
+                  }}
                   placeholder="0.00"
-                  min="0.01"
-                  step="0.01"
                   disabled={!userPublicKey || isProcessing}
                 />
 
@@ -1969,6 +2005,9 @@ function RegistrationPage({ userPublicKey, setUserPublicKey, onBack, onRegistere
           </label>
           <div className="helper-row">
             <span>3-18 characters, letters and numbers recommended.</span>
+            <span className={`char-counter${username.length >= 30 ? ' char-counter--limit' : ''}`}>
+              {username.length} / 30
+            </span>
           </div>
           <button className="primary-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? 'Reserving...' : 'Reserve username'}
