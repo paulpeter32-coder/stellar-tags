@@ -12,9 +12,7 @@ const genericPool = require('generic-pool');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-//Ensure to add the value for STELLAR_TAG_DOMAIN in the env file
 const STELLAR_TAG_DOMAIN = process.env.STELLAR_TAG_DOMAIN;
-
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -29,7 +27,6 @@ const corsOptions = {
     }
     return callback(null, false);
   },
-
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -37,14 +34,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
-
-app.use(cors());
-// #49 — Enforce strict 10kb JSON payload size limit to prevent DoS via oversized payloads
 app.use(express.json({ limit: '10kb' }));
 
-// #36 — Reject requests where any query/body value is a non-primitive (object or array).
-// Blocks operator-injection patterns like { "$ne": "" } reaching the query layer.
 const isPrimitive = (v) => v === null || v === undefined || typeof v !== 'object';
 
 const rejectNestedObjects = (req, res, next) => {
@@ -65,15 +56,8 @@ const rejectNestedObjects = (req, res, next) => {
 
 app.use(rejectNestedObjects);
 
-// ---------------------------------------------------------------------------
-// #50 — Database Connection Pooling
-// ---------------------------------------------------------------------------
-// Append connection_limit and pool_timeout to the connection string as
-// documented in the issue, then parse them to configure the pool.
 const rawDbPath = process.env.DB_PATH || path.join(__dirname, 'data', 'registrations.db');
 
-// Parse optional pool parameters from the connection string
-// e.g. DB_PATH="./data/registrations.db?connection_limit=10&pool_timeout=5"
 const parseDbPath = (raw) => {
   const [filePath, queryString] = raw.split('?');
   const params = {};
@@ -93,16 +77,12 @@ const parseDbPath = (raw) => {
 const dbConfig = parseDbPath(rawDbPath);
 fs.mkdirSync(path.dirname(dbConfig.filePath), { recursive: true });
 
-// Create a connection pool for SQLite database handles using generic-pool.
-// Connections are recycled back to the pool rather than being opened/closed
-// on every request, which improves performance under concurrent load.
 const dbPool = genericPool.createPool(
   {
     create: () =>
       new Promise((resolve, reject) => {
         const connection = new sqlite3.Database(dbConfig.filePath, (err) => {
           if (err) return reject(err);
-          // Enable WAL mode for better concurrent read performance
           connection.run('PRAGMA journal_mode=WAL', () => resolve(connection));
         });
       }),
@@ -112,14 +92,13 @@ const dbPool = genericPool.createPool(
       }),
   },
   {
-    max: dbConfig.connectionLimit,  // Maximum 10 active connections
-    min: 1,                         // Keep at least 1 idle connection
-    acquireTimeoutMillis: dbConfig.poolTimeout * 1000, // 5-second timeout
-    idleTimeoutMillis: 30000,       // Recycle idle connections after 30s
+    max: dbConfig.connectionLimit,
+    min: 1,
+    acquireTimeoutMillis: dbConfig.poolTimeout * 1000,
+    idleTimeoutMillis: 30000,
   },
 );
 
-// Helper: acquire a connection, run a query, and release back to pool
 const poolGet = (sql, params) =>
   dbPool.acquire().then(
     (conn) =>
@@ -156,7 +135,6 @@ const poolAll = (sql, params) =>
       }),
   );
 
-// Initialise the schema using a pooled connection
 (async () => {
   try {
     await poolRun(
@@ -186,18 +164,9 @@ const normalizeNameTag = (value) => {
   if (!trimmed) {
     return '';
   }
-
   return trimmed.includes('*') ? trimmed : `${trimmed}*${DEFAULT_FEDERATION_DOMAIN}`;
 };
 
-
-// ---------------------------------------------------------------------------
-// #51 — ETag Caching Middleware for Federation Endpoint
-// ---------------------------------------------------------------------------
-// Generates a SHA-256 based ETag from the JSON response body.
-// If the client sends a matching If-None-Match header, the server responds
-// with 304 Not Modified without re-running the database query on subsequent
-// requests (Express caches the comparison after the first response).
 const etagCache = (req, res, next) => {
   const originalJson = res.json.bind(res);
 
@@ -208,7 +177,6 @@ const etagCache = (req, res, next) => {
 
     res.set('ETag', etag);
 
-    // Check If-None-Match header — return 304 if content hasn't changed
     const clientEtag = req.get('If-None-Match');
     if (clientEtag && clientEtag === etag) {
       return res.status(304).end();
@@ -277,7 +245,6 @@ app.post('/register', async (req, res) => {
     if (error.message && error.message.includes('UNIQUE')) {
       return res.status(409).json({ detail: 'Username already registered' });
     }
-
     return res.status(500).json({ detail: 'Failed to save registration' });
   }
 });
@@ -334,9 +301,6 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// #49 — Error handling middleware for payload size limit violations
-// Express emits a 'entity.too.large' error type when the JSON body exceeds the limit.
-// This middleware catches it and returns a clean 413 JSON response.
 app.use((err, _req, res, _next) => {
   if (err.type === 'entity.too.large') {
     return res.status(413).json({
@@ -351,25 +315,21 @@ if (require.main === module) {
     console.log(`Server successfully initialized on port ${PORT}`);
   });
 
-  // This catches any weird cloud port errors and prevents a hard crash
   server.on('error', (e) => {
     if (e.code === 'EADDRINUSE') {
       console.error(`Port ${PORT} is in use, forcing shutdown so Railway can restart cleanly.`);
       process.exit(1);
     }
   });
-    
 
-    // Graceful shutdown — drain the connection pool
-    const shutdown = async () => {
-      console.log('\nShutting down gracefully...');
-      await dbPool.drain();
-      await dbPool.clear();
-      server.close(() => process.exit(0));
-    };
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+  const shutdown = async () => {
+    console.log('\nShutting down gracefully...');
+    await dbPool.drain();
+    await dbPool.clear();
+    server.close(() => process.exit(0));
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
-// Export for testing and for the Horizon listener
 module.exports = { app, poolGet, poolAll, rejectNestedObjects };
