@@ -192,9 +192,6 @@ db.serialize(() => {
 // Start the weekly background job that prunes/flags stale registrations.
 scheduleCleanupJob(db);
 
-app.get('/federation', (req, res) => {
-app.get('/federation', async (req, res) => {
-
 // ---------------------------------------------------------------------------
 // #51 — ETag Caching Middleware for Federation Endpoint
 // ---------------------------------------------------------------------------
