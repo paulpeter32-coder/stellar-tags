@@ -7,6 +7,14 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
 }));
 
+jest.mock('@stellar/stellar-sdk', () => ({
+  Horizon: { Server: jest.fn() },
+}));
+
+jest.mock('pdfkit', () => jest.fn());
+
+jest.mock('./src/cleanup-cron', () => ({ scheduleCleanupJob: jest.fn() }));
+
 jest.mock('sqlite3', () => ({
   verbose: () => ({
     Database: jest.fn().mockImplementation((_path, cb) => {
@@ -15,6 +23,7 @@ jest.mock('sqlite3', () => ({
           const fn = args.find((a) => typeof a === 'function');
           if (fn) fn.call({ lastID: 0, changes: 0 }, null);
         }),
+        serialize: jest.fn((fn) => fn && fn()),
         close: jest.fn((cb) => cb && cb()),
       };
       if (cb) cb(null);
