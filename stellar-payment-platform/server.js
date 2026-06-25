@@ -8,6 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const { Horizon } = require('@stellar/stellar-sdk');
 const PDFDocument = require('pdfkit');
 const { scheduleCleanupJob } = require('./src/cleanup-cron');
+const { verifyMultiSignerThreshold, isSingleSignerAccount } = require('./src/multisigner-verifier');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -340,6 +341,18 @@ app.get('/federation', etagCache, async (req, res, next) => {
 
 const { StrKey } = require('@stellar/stellar-sdk');
 
+/**
+ * Registration endpoint with multi-signer threshold verification
+ * 
+ * For single-signer accounts:
+ * - Signature must be the account's public key or a registered signer
+ * - Basic validation of address format
+ * 
+ * For multi-signer accounts (enterprise):
+ * - Fetches account signers and thresholds from Horizon
+ * - Validates that provided signature(s) meet minimum threshold
+ * - Ensures authorization requirements are satisfied
+ */
 app.post('/register', async (req, res, next) => {
   const username = normalizeNameTag(req.body.username);
   const address = typeof req.body.address === 'string' ? req.body.address.trim() : '';
@@ -355,34 +368,89 @@ app.post('/register', async (req, res, next) => {
     return next(error);
   }
 
+  // Signature is required for verification
+  if (!signature) {
+    const error = new Error('Signature required for account verification.');
+    error.statusCode = 400;
+    return next(error);
+  }
+
   // Convert to lowercase for case-insensitive storage
   const normalizedUsername = username.toLowerCase();
 
   try {
-    const row = await poolGet(
+    // Check if address already registered
+    const existingRow = await poolGet(
       'SELECT username FROM username_registry WHERE address = ?',
       [address],
     );
 
-    if (row) {
+    if (existingRow) {
       const conflictError = new Error('Address already registered');
       conflictError.statusCode = 409;
       return next(conflictError);
     }
 
+    // Verify signature(s) against account's threshold requirements
+    const verificationResult = await verifyMultiSignerThreshold(
+      address,
+      [signature],
+      {
+        operationType: 'management', // Use management threshold for account registration
+        horizonUrl: HORIZON_BASE,
+      }
+    );
+
+    if (!verificationResult.success) {
+      const authError = new Error(
+        `Signature verification failed: ${verificationResult.errorMessage}`
+      );
+      authError.statusCode = 401;
+      return next(authError);
+    }
+
+    // Registration verification passed, insert into database
     await poolRun(
       'INSERT INTO username_registry (username, address, created_at) VALUES (?, ?, ?)',
       [normalizedUsername, address, new Date().toISOString()],
     );
 
-    return res.status(201).json({ ok: true, username: normalizedUsername, address, federation_address: `${normalizedUsername}*${process.env.DOMAIN || 'localhost'}` });
+    return res.status(201).json({
+      ok: true,
+      username: normalizedUsername,
+      address,
+      federation_address: `${normalizedUsername}*${process.env.DOMAIN || 'localhost'}`,
+      verification: {
+        accountId: verificationResult.accountId,
+        signerCount: verificationResult.signerCount,
+        thresholdMet: verificationResult.success,
+        requiredThreshold: verificationResult.requiredThreshold,
+        providedWeight: verificationResult.totalWeight,
+      },
+    });
   } catch (error) {
+    // Handle database errors
     if (error.message && error.message.includes('UNIQUE')) {
       const conflictError = new Error('Username already registered');
       conflictError.statusCode = 409;
       return next(conflictError);
     }
-    const registrationError = new Error('Failed to save registration');
+    
+    // Handle verification errors
+    if (error.message && error.message.includes('Account not found')) {
+      const notFoundError = new Error(`Account not found on Horizon: ${address}`);
+      notFoundError.statusCode = 404;
+      return next(notFoundError);
+    }
+
+    // Handle signature verification errors
+    if (error.statusCode === 401) {
+      return next(error);
+    }
+
+    // Handle other errors
+    console.error('Registration error:', error.message);
+    const registrationError = new Error(`Registration verification failed: ${error.message}`);
     registrationError.statusCode = 500;
     return next(registrationError);
   }
