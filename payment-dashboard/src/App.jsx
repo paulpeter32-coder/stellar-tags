@@ -994,6 +994,9 @@ function Dashboard({
                   placeholder="0.00"
                   disabled={!userPublicKey || isProcessing}
                 />
+                {balance !== null && Number(amount) > 0 && Number(amount) > balance && (
+                  <p className="balance-error">Insufficient XLM balance.</p>
+                )}
 
                 <div className="form-actions">
                   <button
@@ -1004,7 +1007,8 @@ function Dashboard({
                       !userPublicKey ||
                       isProcessing ||
                       !amount ||
-                      Number(amount) <= 0
+                      Number(amount) <= 0 ||
+                      (balance !== null && Number(amount) > balance)
                     }
                   >
                     {isProcessing ? <LoadingSpinner /> : "Transfer"}
