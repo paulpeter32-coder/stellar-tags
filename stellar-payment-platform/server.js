@@ -250,10 +250,9 @@ app.post('/register', async (req, res, next) => {
   }
 
   try {
-    const row = await poolGet(
-      'SELECT username FROM username_registry WHERE address = ?',
-      [address],
-    );
+    const existing = await prisma.user.findUnique({
+      where: { address }
+    });
 
     if (existing) {
       const conflictError = new Error('Address already registered');
