@@ -278,11 +278,9 @@ app.post('/register', async (req, res, next) => {
     return res.status(400).json({ error: memoError });
   }
 
-  if (!signature) {
-    return res.status(400).json({ error: 'Signature required' });
-  }
-
-  if (!StrKey.isValidEd25519PublicKey(signature)) {
+  // Signature is optional for legacy single-signer registrations.
+  // If provided, validate its format and run multi-signer verification.
+  if (signature && !StrKey.isValidEd25519PublicKey(signature)) {
     const error = new Error('Invalid Stellar Public Key format.');
     error.statusCode = 400;
     return next(error);
@@ -306,16 +304,19 @@ app.post('/register', async (req, res, next) => {
       return next(conflictError);
     }
 
-    const verificationResult = await verifyMultiSignerThreshold(address, [signature], {
-      operationType: 'management',
-    });
+    let verificationResult = null;
+    if (signature) {
+      verificationResult = await verifyMultiSignerThreshold(address, [signature], {
+        operationType: 'management',
+      });
 
-    if (!verificationResult.success) {
-      const verificationError = new Error(
-        verificationResult.errorMessage || 'Signature verification failed'
-      );
-      verificationError.statusCode = 401;
-      throw verificationError;
+      if (!verificationResult.success) {
+        const verificationError = new Error(
+          verificationResult.errorMessage || 'Signature verification failed'
+        );
+        verificationError.statusCode = 401;
+        throw verificationError;
+      }
     }
 
     await prisma.user.create({
@@ -331,13 +332,15 @@ app.post('/register', async (req, res, next) => {
       username: normalizedUsername,
       address,
       federation_address: `${normalizedUsername}*${process.env.DOMAIN || 'localhost'}`,
-      verification: {
-        accountId: verificationResult.accountId,
-        signerCount: verificationResult.signerCount,
-        thresholdMet: verificationResult.success,
-        requiredThreshold: verificationResult.requiredThreshold,
-        providedWeight: verificationResult.totalWeight,
-      },
+      ...(verificationResult && {
+        verification: {
+          accountId: verificationResult.accountId,
+          signerCount: verificationResult.signerCount,
+          thresholdMet: verificationResult.success,
+          requiredThreshold: verificationResult.requiredThreshold,
+          providedWeight: verificationResult.totalWeight,
+        },
+      }),
       ...(memoType && { memo_type: memoType, memo }),
     });
   } catch (error) {

@@ -26,6 +26,24 @@ jest.mock('./prismaClient', () => ({
   },
 }));
 
+// Default multi-signer verifier mock for server tests
+jest.mock('./src/multisigner-verifier', () => ({
+  verifyMultiSignerThreshold: jest.fn().mockResolvedValue({
+    success: true,
+    accountId: 'GDUMMYACCOUNTIDIIIIIIIIIIIIIIIIIIIIIIIIIIIIII',
+    operationType: 'management',
+    requiredThreshold: 1,
+    totalWeight: 1,
+    signatureCount: 1,
+    uniqueSignerCount: 1,
+    signatures: [{ publicKey: 'GDUMMY', weight: 1, isValid: true }],
+    thresholds: { low_threshold: 1, med_threshold: 2, high_threshold: 3 },
+    signerCount: 1,
+    errorMessage: null,
+  }),
+  isSingleSignerAccount: jest.fn().mockReturnValue(true),
+}));
+
 jest.mock('sqlite3', () => ({
   verbose: () => ({
     Database: jest.fn().mockImplementation((_path, cb) => {
